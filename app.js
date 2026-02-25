@@ -1132,29 +1132,14 @@
     return res.json();
   }
 
-  function fmtDurationExport(hours) {
-    if (isNaN(hours) || hours === 0) return '-';
-    const totalSec = Math.round(hours * 3600);
-    const d = Math.floor(totalSec / 86400);
-    const rem = totalSec % 86400;
-    const h = Math.floor(rem / 3600);
-    const m = Math.floor((rem % 3600) / 60);
-    const s = rem % 60;
-    const time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-    return d > 0 ? d + (d === 1 ? ' day, ' : ' days, ') + time : time;
-  }
-
-  function fmtResponseExport(sec) {
-    if (isNaN(sec)) return '-';
-    const total = Math.round(sec);
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-  }
+  function numOrDash(v) { return isNaN(v) ? '' : v; }
+  function intOrDash(v) { return isNaN(v) ? '' : Math.round(v); }
+  function pctOrDash(v) { return isNaN(v) ? '' : v / 100; }
+  function hoursToSerial(h) { return isNaN(h) || h === 0 ? '' : h / 24; }
+  function secsToSerial(s) { return isNaN(s) ? '' : s / 86400; }
 
   function fmtClockedExport(hours) {
-    if (isNaN(hours)) return '-';
+    if (isNaN(hours)) return '';
     const totalMin = Math.round(hours * 60);
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
@@ -1164,21 +1149,21 @@
   function buildEmployeeRow(r, rowNum) {
     return [
       r.employee,
-      fmtDurationExport(r.duration),
-      isNaN(r.sales) ? '-' : r.sales,
-      isNaN(r.directMessagesSent) ? '-' : Math.round(r.directMessagesSent),
-      isNaN(r.directPpvsSent) ? '-' : Math.round(r.directPpvsSent),
-      isNaN(r.goldenRatio) ? '-' : r.goldenRatio / 100,
-      isNaN(r.ppvsUnlocked) ? '-' : Math.round(r.ppvsUnlocked),
-      isNaN(r.unlockRate) ? '-' : r.unlockRate / 100,
-      isNaN(r.fansChatted) ? '-' : Math.round(r.fansChatted),
-      isNaN(r.fansWhoSpentMoney) ? '-' : Math.round(r.fansWhoSpentMoney),
-      isNaN(r.fanCvr) ? '-' : r.fanCvr / 100,
-      fmtResponseExport(r.responseTime),
+      hoursToSerial(r.duration),
+      numOrDash(r.sales),
+      intOrDash(r.directMessagesSent),
+      intOrDash(r.directPpvsSent),
+      pctOrDash(r.goldenRatio),
+      intOrDash(r.ppvsUnlocked),
+      pctOrDash(r.unlockRate),
+      intOrDash(r.fansChatted),
+      intOrDash(r.fansWhoSpentMoney),
+      pctOrDash(r.fanCvr),
+      secsToSerial(r.responseTime),
       fmtClockedExport(r.clockedHours),
-      '=C' + rowNum + '/(B' + rowNum + '*24)',
-      isNaN(r.characterCount) ? '-' : Math.round(r.characterCount),
-      isNaN(r.messagesSentPerHour) ? '-' : r.messagesSentPerHour,
+      hoursToSerial(r.duration) ? '=C' + rowNum + '/B' + rowNum + '/24' : '',
+      intOrDash(r.characterCount),
+      numOrDash(r.messagesSentPerHour),
     ];
   }
 
@@ -1268,7 +1253,8 @@
         const cvrs = teamData.filter((r) => !isNaN(r.fanCvr));
         const teamAvgCvr = cvrs.length ? cvrs.reduce((s, r) => s + r.fanCvr / 100, 0) / cvrs.length : 0;
         const rts = teamData.filter((r) => !isNaN(r.responseTime));
-        const teamAvgRt = rts.length ? fmtResponseExport(rts.reduce((s, r) => s + r.responseTime, 0) / rts.length) : '-';
+        const avgRtSec = rts.length ? rts.reduce((s, r) => s + r.responseTime, 0) / rts.length : 0;
+        const teamAvgRt = rts.length ? secsToSerial(avgRtSec) : '-';
 
         tlRows.push([tn, '', '']);
         tlRows.push(['METRICS', 'CURRENT', 'BONUS']);
@@ -1345,88 +1331,139 @@
         const b = parseInt(hex.slice(4, 6), 16) / 255;
         return { red: r, green: g, blue: b };
       }
+      const WHITE = { red: 1, green: 1, blue: 1 };
+      const BLACK = { red: 0, green: 0, blue: 0 };
+      const defaultFont = { fontFamily: 'Arial', fontSize: 10 };
 
-      function headerFmt(sid, rowStart, rowEnd, cols, bg, fg, bold) {
+      function cellFmt(sid, r1, r2, c1, c2, fmt) {
+        const fields = Object.keys(fmt).map(k => 'userEnteredFormat.' + k).join(',');
+        fmtReqs.push({ repeatCell: {
+          range: { sheetId: sid, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 },
+          cell: { userEnteredFormat: fmt }, fields,
+        }});
+      }
+
+      function applyNumberFormats(sid, totalRows) {
+        const colFormats = [
+          { col: 1, fmt: '[h]:mm:ss' },
+          { col: 2, fmt: '$#,##0.00' },
+          { col: 3, fmt: '#,##0' },
+          { col: 4, fmt: '#,##0' },
+          { col: 5, fmt: '0.00%' },
+          { col: 6, fmt: '#,##0' },
+          { col: 7, fmt: '0.00%' },
+          { col: 8, fmt: '#,##0' },
+          { col: 9, fmt: '#,##0' },
+          { col: 10, fmt: '0.00%' },
+          { col: 11, fmt: '[h]:mm:ss' },
+          null,
+          { col: 13, fmt: '$#,##0.00' },
+          { col: 14, fmt: '#,##0' },
+          { col: 15, fmt: '0.00' },
+        ];
+        for (const cf of colFormats) {
+          if (!cf) continue;
+          cellFmt(sid, 1, totalRows, cf.col, cf.col + 1, {
+            numberFormat: { type: cf.fmt.includes('$') ? 'CURRENCY' : cf.fmt.includes('%') ? 'PERCENT' : cf.fmt.includes(':') ? 'TIME' : 'NUMBER', pattern: cf.fmt },
+          });
+        }
+      }
+
+      function applyMainSheetFormat(sid, headerRow, avgRow, scoreRow, dataStart, dataEnd, totalCols) {
+        cellFmt(sid, 0, dataEnd, 0, totalCols, {
+          textFormat: Object.assign({}, defaultFont, { foregroundColor: BLACK }),
+          horizontalAlignment: 'CENTER',
+          verticalAlignment: 'MIDDLE',
+        });
+
+        cellFmt(sid, headerRow, headerRow + 1, 0, totalCols, {
+          backgroundColor: rgb('F1C232'),
+          textFormat: Object.assign({}, defaultFont, { bold: true, foregroundColor: rgb('5B0F00') }),
+          horizontalAlignment: 'CENTER',
+        });
+
+        if (avgRow >= 0) {
+          cellFmt(sid, avgRow, avgRow + 1, 0, 1, {
+            backgroundColor: rgb('FF9900'),
+            textFormat: Object.assign({}, defaultFont, { bold: true, foregroundColor: WHITE }),
+          });
+          cellFmt(sid, avgRow, avgRow + 1, 1, totalCols, {
+            backgroundColor: rgb('FFFF00'),
+            textFormat: Object.assign({}, defaultFont, { bold: true }),
+          });
+        }
+
+        if (scoreRow >= 0) {
+          cellFmt(sid, scoreRow, scoreRow + 1, 0, 1, {
+            backgroundColor: rgb('1155CC'),
+            textFormat: Object.assign({}, defaultFont, { bold: true, foregroundColor: WHITE }),
+          });
+          cellFmt(sid, scoreRow, scoreRow + 1, 1, totalCols, {
+            backgroundColor: rgb('00FFFF'),
+            textFormat: Object.assign({}, defaultFont, { bold: true }),
+          });
+        }
+
+        cellFmt(sid, dataStart, dataEnd, 0, 1, {
+          textFormat: Object.assign({}, defaultFont, { bold: false }),
+          horizontalAlignment: 'LEFT',
+        });
+
+        cellFmt(sid, dataStart, dataEnd, 1, 2, {
+          backgroundColor: rgb('EFEFEF'),
+          textFormat: Object.assign({}, defaultFont, { bold: true, foregroundColor: rgb('B45F06') }),
+        });
+
+        const cyanCols = [10, 13, 15];
+        for (const ci of cyanCols) {
+          cellFmt(sid, headerRow, headerRow + 1, ci, ci + 1, {
+            backgroundColor: rgb('00FFFF'),
+            textFormat: Object.assign({}, defaultFont, { bold: true, foregroundColor: rgb('5B0F00') }),
+          });
+        }
+
+        cellFmt(sid, dataStart, dataEnd, 2, 3, {
+          backgroundColor: rgb('D9EAD3'),
+        });
+
         fmtReqs.push({
-          repeatCell: {
-            range: { sheetId: sid, startRowIndex: rowStart, endRowIndex: rowEnd, startColumnIndex: 0, endColumnIndex: cols },
-            cell: {
-              userEnteredFormat: {
-                backgroundColor: bg,
-                textFormat: { foregroundColor: fg, bold: bold !== false },
-              },
-            },
-            fields: 'userEnteredFormat(backgroundColor,textFormat)',
+          updateBorders: {
+            range: { sheetId: sid, startRowIndex: headerRow, endRowIndex: dataEnd, startColumnIndex: 0, endColumnIndex: totalCols },
+            top: { style: 'SOLID', width: 1, color: rgb('999999') },
+            bottom: { style: 'SOLID', width: 1, color: rgb('999999') },
+            left: { style: 'SOLID', width: 1, color: rgb('999999') },
+            right: { style: 'SOLID', width: 1, color: rgb('999999') },
+            innerHorizontal: { style: 'SOLID', width: 1, color: rgb('D9D9D9') },
+            innerVertical: { style: 'SOLID', width: 1, color: rgb('D9D9D9') },
           },
         });
+
+        fmtReqs.push({ autoResizeDimensions: { dimensions: { sheetId: sid, dimension: 'COLUMNS', startIndex: 0, endIndex: totalCols } } });
+
+        fmtReqs.push({ updateDimensionProperties: {
+          range: { sheetId: sid, dimension: 'ROWS', startIndex: 0, endIndex: dataEnd },
+          properties: { pixelSize: 24 }, fields: 'pixelSize',
+        }});
       }
 
       const byEmpSid = sheetIdMap['By employee'];
       if (byEmpSid != null) {
-        headerFmt(byEmpSid, 0, 1, 16, rgb('F1C232'), rgb('5B0F00'), true);
-        headerFmt(byEmpSid, 1, 2, 1, rgb('FF9900'), { red: 1, green: 1, blue: 1 }, true);
-
-        fmtReqs.push({
-          repeatCell: {
-            range: { sheetId: byEmpSid, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 1, endColumnIndex: 16 },
-            cell: { userEnteredFormat: { backgroundColor: rgb('FFFF00') } },
-            fields: 'userEnteredFormat.backgroundColor',
-          },
-        });
-
-        headerFmt(byEmpSid, 2, 3, 1, rgb('1155CC'), { red: 1, green: 1, blue: 1 }, true);
-        fmtReqs.push({
-          repeatCell: {
-            range: { sheetId: byEmpSid, startRowIndex: 2, endRowIndex: 3, startColumnIndex: 1, endColumnIndex: 16 },
-            cell: { userEnteredFormat: { backgroundColor: rgb('00FFFF') } },
-            fields: 'userEnteredFormat.backgroundColor',
-          },
-        });
-
-        fmtReqs.push({
-          repeatCell: {
-            range: { sheetId: byEmpSid, startRowIndex: 3, endRowIndex: 3 + sorted.length, startColumnIndex: 1, endColumnIndex: 2 },
-            cell: { userEnteredFormat: { backgroundColor: rgb('EFEFEF'), textFormat: { bold: true, foregroundColor: rgb('B45F06') } } },
-            fields: 'userEnteredFormat(backgroundColor,textFormat)',
-          },
-        });
-
-        fmtReqs.push({
-          autoResizeDimensions: {
-            dimensions: { sheetId: byEmpSid, dimension: 'COLUMNS', startIndex: 0, endIndex: 16 },
-          },
-        });
+        const totalRows = 3 + sorted.length;
+        applyNumberFormats(byEmpSid, totalRows);
+        applyMainSheetFormat(byEmpSid, 0, 1, 2, 3, totalRows, 16);
       }
 
       for (const tn of teamNames) {
         const sid = sheetIdMap[tn];
         if (sid == null) continue;
         const cnt = teams[tn].length;
-        headerFmt(sid, 0, 1, 16, rgb('F1C232'), rgb('5B0F00'), true);
+        const totalRows = 1 + cnt + 1;
+        applyNumberFormats(sid, totalRows);
+        applyMainSheetFormat(sid, 0, -1, -1, 1, 1 + cnt, 16);
 
-        const cyanCols = [10, 13, 15];
-        for (const ci of cyanCols) {
-          fmtReqs.push({
-            repeatCell: {
-              range: { sheetId: sid, startRowIndex: 0, endRowIndex: 1, startColumnIndex: ci, endColumnIndex: ci + 1 },
-              cell: { userEnteredFormat: { backgroundColor: rgb('00FFFF') } },
-              fields: 'userEnteredFormat.backgroundColor',
-            },
-          });
-        }
-
-        fmtReqs.push({
-          repeatCell: {
-            range: { sheetId: sid, startRowIndex: cnt + 1, endRowIndex: cnt + 2, startColumnIndex: 10, endColumnIndex: 16 },
-            cell: { userEnteredFormat: { backgroundColor: rgb('FFFF00') } },
-            fields: 'userEnteredFormat.backgroundColor',
-          },
-        });
-
-        fmtReqs.push({
-          autoResizeDimensions: {
-            dimensions: { sheetId: sid, dimension: 'COLUMNS', startIndex: 0, endIndex: 16 },
-          },
+        cellFmt(sid, 1 + cnt, 1 + cnt + 1, 10, 16, {
+          backgroundColor: rgb('FFFF00'),
+          textFormat: Object.assign({}, defaultFont, { bold: true }),
         });
       }
 
@@ -1434,34 +1471,48 @@
       if (tlSid != null) {
         let offset = 1;
         for (let ti = 0; ti < teamNames.length; ti++) {
-          fmtReqs.push({
-            repeatCell: {
-              range: { sheetId: tlSid, startRowIndex: offset, endRowIndex: offset + 1, startColumnIndex: 1, endColumnIndex: 4 },
-              cell: { userEnteredFormat: { backgroundColor: rgb('D9D2E9'), textFormat: { bold: true, foregroundColor: rgb('20124D') } } },
-              fields: 'userEnteredFormat(backgroundColor,textFormat)',
-            },
+          cellFmt(tlSid, offset, offset + 1, 1, 4, {
+            backgroundColor: rgb('D9D2E9'),
+            textFormat: Object.assign({}, defaultFont, { bold: true, foregroundColor: rgb('20124D') }),
+          });
+          cellFmt(tlSid, offset + 1, offset + 2, 1, 4, {
+            backgroundColor: rgb('8E7CC3'),
+            textFormat: Object.assign({}, defaultFont, { bold: true, foregroundColor: WHITE }),
+          });
+          cellFmt(tlSid, offset + 5, offset + 6, 1, 4, {
+            backgroundColor: rgb('FFE599'),
+            textFormat: Object.assign({}, defaultFont, { bold: true }),
           });
           fmtReqs.push({
-            repeatCell: {
-              range: { sheetId: tlSid, startRowIndex: offset + 1, endRowIndex: offset + 2, startColumnIndex: 1, endColumnIndex: 4 },
-              cell: { userEnteredFormat: { backgroundColor: rgb('8E7CC3'), textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } } } },
-              fields: 'userEnteredFormat(backgroundColor,textFormat)',
-            },
-          });
-          fmtReqs.push({
-            repeatCell: {
-              range: { sheetId: tlSid, startRowIndex: offset + 5, endRowIndex: offset + 6, startColumnIndex: 1, endColumnIndex: 4 },
-              cell: { userEnteredFormat: { backgroundColor: rgb('FFE599') } },
-              fields: 'userEnteredFormat.backgroundColor',
+            updateBorders: {
+              range: { sheetId: tlSid, startRowIndex: offset, endRowIndex: offset + 6, startColumnIndex: 1, endColumnIndex: 4 },
+              top: { style: 'SOLID', width: 1, color: rgb('999999') },
+              bottom: { style: 'SOLID', width: 1, color: rgb('999999') },
+              left: { style: 'SOLID', width: 1, color: rgb('999999') },
+              right: { style: 'SOLID', width: 1, color: rgb('999999') },
+              innerHorizontal: { style: 'SOLID', width: 1, color: rgb('D9D9D9') },
+              innerVertical: { style: 'SOLID', width: 1, color: rgb('D9D9D9') },
             },
           });
           offset += 7;
         }
+        fmtReqs.push({ autoResizeDimensions: { dimensions: { sheetId: tlSid, dimension: 'COLUMNS', startIndex: 0, endIndex: 5 } } });
+      }
+
+      const hSid = sheetIdMap['HUBSTAFF HOURS'];
+      if (hSid != null) {
+        cellFmt(hSid, 0, 1, 0, 7, {
+          backgroundColor: rgb('F1C232'),
+          textFormat: Object.assign({}, defaultFont, { bold: true, foregroundColor: rgb('5B0F00') }),
+          horizontalAlignment: 'CENTER',
+        });
         fmtReqs.push({
-          autoResizeDimensions: {
-            dimensions: { sheetId: tlSid, dimension: 'COLUMNS', startIndex: 0, endIndex: 5 },
+          updateBorders: {
+            range: { sheetId: hSid, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 7 },
+            bottom: { style: 'SOLID', width: 2, color: rgb('B45F06') },
           },
         });
+        fmtReqs.push({ autoResizeDimensions: { dimensions: { sheetId: hSid, dimension: 'COLUMNS', startIndex: 0, endIndex: 7 } } });
       }
 
       if (fmtReqs.length > 0) {
