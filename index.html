@@ -13,7 +13,7 @@
   <div class="app">
     <header class="header">
       <h1>Dashboard KPIs</h1>
-      <p class="subtitle">Infloww + Hubstaff · Sube ambos archivos para ver KPIs e ingresos por hora</p>
+      <p class="subtitle">Infloww + Hubstaff · Sube ambos archivos para ver las estadísticas por empleado</p>
       <div class="upload-section">
         <div class="upload-card">
           <span class="upload-label">1. Infloww (Marketing Analytics)</span>
@@ -31,40 +31,101 @@
         </div>
       </div>
       <div class="header-actions">
-        <button type="button" class="btn btn-ghost" id="toggleSheetPanel">Conectar Google Sheets (solo Infloww)</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="toggleSheetPanel">Conectar Google Sheets (solo Infloww)</button>
+        <button type="button" class="btn btn-export btn-sm" id="exportSheets">Exportar a Google Sheets</button>
       </div>
     </header>
 
+    <section class="sheet-panel collapsed" id="gsheetSetup">
+      <div class="sheet-panel-inner">
+        <p>Para exportar necesitas un <strong>Client ID de Google OAuth2</strong>. Créalo en <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent)">Google Cloud Console</a> (habilita la Google Sheets API primero).</p>
+        <div class="input-row">
+          <input type="text" id="gsheetClientId" placeholder="Tu Client ID (ej: 123456.apps.googleusercontent.com)" />
+          <button type="button" class="btn btn-primary" id="saveGsheetClientId">Guardar</button>
+        </div>
+      </div>
+    </section>
+
     <section class="sheet-panel collapsed" id="sheetPanel">
       <div class="sheet-panel-inner">
-        <p>Pega la URL de una Google Sheet publicada. Los datos se actualizarán automáticamente a las <strong>12:00 AM UTC cada 2 días</strong> (cuando tengas la página abierta).</p>
+        <p>Pega la URL de una Google Sheet publicada.</p>
         <div class="input-row">
           <input type="text" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/.../edit" />
           <button type="button" class="btn btn-primary" id="saveSheetUrl">Guardar y activar</button>
         </div>
-        <p class="hint">Exporta desde Infloww a CSV, impórtalo en Google Sheets y comparte el enlace "Cualquier persona con el enlace".</p>
       </div>
     </section>
 
+    <section class="controls-bar" id="controlsBar" hidden>
+      <div class="filter-group">
+        <span class="control-label">Periodo</span>
+        <div class="btn-group" id="periodButtons">
+          <button type="button" class="btn btn-chip active" data-period="current">Semana actual</button>
+          <button type="button" class="btn btn-chip" data-period="previous">Semana anterior</button>
+          <button type="button" class="btn btn-chip" data-period="custom">Personalizado</button>
+          <button type="button" class="btn btn-chip" data-period="all">Todo</button>
+        </div>
+        <button type="button" class="btn btn-chip btn-cal-toggle" id="toggleCal" title="Ver calendario">&#128197;</button>
+        <div class="cal-dropdown" id="calSection" hidden>
+          <div class="cal-hint" id="calHint" hidden></div>
+          <div class="cal-wrapper">
+            <button type="button" class="cal-nav-btn" id="calPrev">&#8249;</button>
+            <div class="cal-month" id="calMonth0"></div>
+            <div class="cal-month" id="calMonth1"></div>
+            <button type="button" class="cal-nav-btn" id="calNext">&#8250;</button>
+          </div>
+        </div>
+      </div>
+      <div class="sort-group">
+        <span class="control-label">Ordenar por</span>
+        <select id="sortColumn" class="select-sort"></select>
+        <div class="btn-group">
+          <button type="button" class="btn btn-chip active" data-dir="desc" id="btnDesc">Mayor ↓</button>
+          <button type="button" class="btn btn-chip" data-dir="asc" id="btnAsc">Menor ↑</button>
+          <button type="button" class="btn btn-chip" data-dir="alpha" id="btnAlpha">A-Z</button>
+        </div>
+      </div>
+      <label class="check-group">
+        <input type="checkbox" id="hideInactive">
+        <span>Ocultar empleados sin mensajes</span>
+      </label>
+      <label class="check-group">
+        <input type="checkbox" id="toggleAvg" checked>
+        <span>Mostrar promedios</span>
+      </label>
+      <label class="check-group">
+        <input type="checkbox" id="toggleCompact">
+        <span>Vista compacta</span>
+      </label>
+    </section>
+
+    <div class="history-bar" id="historyInfo" hidden>
+      <span class="history-text"></span>
+      <button type="button" class="btn btn-ghost btn-sm btn-danger" id="clearHistory">Borrar historial</button>
+    </div>
+
+    <div class="period-info" id="periodInfo"></div>
     <div class="last-update" id="lastUpdate"></div>
-    <div class="next-update" id="nextUpdate"></div>
 
     <main class="dashboard" id="dashboard">
       <div class="empty-state" id="emptyState">
         <div class="empty-icon">📊</div>
         <h2>Sin datos aún</h2>
-        <p>Sube el <strong>CSV de Infloww</strong> (Marketing Analytics) y el <strong>CSV de Hubstaff</strong> (Timesheets o Reports → Time & Activity) para ver los KPIs. Las horas de Hubstaff se actualizan al subir un nuevo export.</p>
+        <p>Sube el <strong>CSV de Infloww</strong> y el <strong>CSV de Hubstaff</strong> para ver las estadísticas por empleado.</p>
       </div>
-      <div class="kpi-grid" id="kpiGrid" hidden></div>
       <div class="table-section" id="tableSection" hidden>
-        <h3>Detalle por fila (primeras filas)</h3>
         <div class="table-wrap">
-          <table id="dataTable"></table>
+          <table id="dataTable">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+            <tfoot id="tableFoot"></tfoot>
+          </table>
         </div>
       </div>
     </main>
   </div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="app.js"></script>
 </body>
 </html>
