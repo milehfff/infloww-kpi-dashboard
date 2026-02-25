@@ -1206,29 +1206,14 @@
 
       const sheetTitles = ['By employee', 'TL BONUSES', ...teamNames, 'HUBSTAFF HOURS'];
 
-      let spreadsheetId = localStorage.getItem(GSHEET_ID_KEY);
-      exportBtn.textContent = spreadsheetId ? 'Actualizando hoja...' : 'Creando hoja...';
-
-      if (!spreadsheetId) {
-        const createBody = {
-          properties: { title: 'KPI Dashboard Export' },
-          sheets: sheetTitles.map((t) => ({ properties: { title: t } })),
-        };
-        const created = await sheetsApi('', 'POST', createBody);
-        spreadsheetId = created.spreadsheetId;
-        localStorage.setItem(GSHEET_ID_KEY, spreadsheetId);
-      } else {
-        const existing = await sheetsApi('/' + spreadsheetId + '?fields=sheets.properties', 'GET');
-        const existingSheets = existing.sheets.map((s) => s.properties);
-        const batchReqs = [];
-        for (let i = 0; i < sheetTitles.length; i++) {
-          batchReqs.push({ addSheet: { properties: { title: sheetTitles[i], index: i } } });
-        }
-        for (const es of existingSheets) {
-          batchReqs.push({ deleteSheet: { sheetId: es.sheetId } });
-        }
-        await sheetsApi('/' + spreadsheetId + ':batchUpdate', 'POST', { requests: batchReqs });
-      }
+      exportBtn.textContent = 'Creando hoja...';
+      const createBody = {
+        properties: { title: 'KPI Dashboard Export – ' + new Date().toLocaleDateString() },
+        sheets: sheetTitles.map((t) => ({ properties: { title: t } })),
+      };
+      const created = await sheetsApi('', 'POST', createBody);
+      let spreadsheetId = created.spreadsheetId;
+      localStorage.setItem(GSHEET_ID_KEY, spreadsheetId);
 
       exportBtn.textContent = 'Escribiendo datos...';
 
