@@ -1207,8 +1207,20 @@
       const sheetTitles = ['By employee', 'TL BONUSES', ...teamNames, 'HUBSTAFF HOURS'];
 
       exportBtn.textContent = 'Creando hoja...';
+      const today = new Date().toLocaleDateString();
+      const baseTitle = 'KPI Dashboard Export – ' + today;
+      const lastDate = localStorage.getItem('infloww_export_date');
+      let ver = parseInt(localStorage.getItem('infloww_export_ver') || '0', 10);
+      if (lastDate === today) {
+        ver++;
+      } else {
+        ver = 0;
+      }
+      localStorage.setItem('infloww_export_date', today);
+      localStorage.setItem('infloww_export_ver', String(ver));
+      const title = ver > 0 ? baseTitle + ' - ver' + ver : baseTitle;
       const createBody = {
-        properties: { title: 'KPI Dashboard Export – ' + new Date().toLocaleDateString() },
+        properties: { title },
         sheets: sheetTitles.map((t) => ({ properties: { title: t } })),
       };
       const created = await sheetsApi('', 'POST', createBody);
